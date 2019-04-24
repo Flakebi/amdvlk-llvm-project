@@ -565,7 +565,7 @@ def int_instrprof_increment : Intrinsic<[],
 // A counter increment with step for instrumentation based profiling.
 def int_instrprof_increment_step : Intrinsic<[],
                                         [llvm_ptr_ty, llvm_i64_ty,
-                                         llvm_i32_ty, llvm_i32_ty, llvm_i32_ty]>;
+                                         llvm_i32_ty, llvm_i32_ty, llvm_i64_ty]>;
 
 // A call to profile runtime for value profiling of target expressions
 // through instrumentation based profiling.
