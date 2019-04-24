@@ -581,9 +581,9 @@ bool InstrProfiling::run(
 
   emitVNodes();
   emitNameData();
-  emitRegistration();
+  //emitRegistration();
   emitUses();
-  emitInitialization();
+  //emitInitialization();
   return true;
 }
 
@@ -1048,6 +1048,9 @@ bool InstrProfiling::emitRuntimeHook() {
   // If the module's provided its own runtime, we don't need to do anything.
   if (M->getGlobalVariable(getInstrProfRuntimeHookVarName()))
     return false;
+
+  // We don't want that, it gives us symbol that we would have to link
+  return false;
 
   // Declare an external variable that will pull in the runtime initialization.
   auto *Int32Ty = Type::getInt32Ty(M->getContext());
