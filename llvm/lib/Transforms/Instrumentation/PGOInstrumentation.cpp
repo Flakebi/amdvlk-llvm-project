@@ -904,7 +904,6 @@ static void instrumentOneFunc(
   FuncInfo.getInstrumentBBs(InstrumentBBs);
   unsigned NumCounters =
       InstrumentBBs.size() + FuncInfo.SIVisitor.getNumOfSelectInsts();
-  printf("%u counter\n", NumCounters);
 
   uint32_t I = 0;
   Type *I8PtrTy = Type::getInt8PtrTy(M->getContext());
@@ -1167,8 +1166,6 @@ private:
 // edges and the BB. Return false on error.
 bool PGOUseFunc::setInstrumentedCounts(
     const std::vector<uint64_t> &CountFromProfile) {
-  printf("%u counter\n", FuncInfo.getNumCounters());
-  printf("%u profile counters\n", CountFromProfile.size());
 
   std::vector<BasicBlock *> InstrumentBBs;
   FuncInfo.getInstrumentBBs(InstrumentBBs);
