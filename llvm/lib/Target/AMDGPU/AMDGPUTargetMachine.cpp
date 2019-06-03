@@ -1047,6 +1047,9 @@ bool GCNPassConfig::addPreISel() {
       addPass(createUnifyLoopExitsPass());
     }
     addPass(createStructurizeCFGPass(false)); // true -> SkipUniformRegions
+    /*addPass(createPrinterPass(outs(),
+                "===============================================================================\n"
+                "// After structurize\n"));*/
   }
 
   // This is a temporary fix for the issue of dealing with in loop uniform values
@@ -1061,6 +1064,9 @@ bool GCNPassConfig::addPreISel() {
   addPass(createAMDGPUAnnotateUniformValues());
   if (!LateCFGStructurize) {
     addPass(createSIAnnotateControlFlowPass());
+    /*addPass(createPrinterPass(outs(),
+                "===============================================================================\n"
+                "// After annotate\n"));*/
 
     // Add PGO passes after structurizing the CFG
     const char* profileGenFilename = getenv("AMDVLK_PROFILE_INSTR_GEN");
@@ -1104,6 +1110,9 @@ bool GCNPassConfig::addPreISel() {
       addPass(createPGOInstrumentationUseLegacyPass(profileUseFilenameString));
       addPass(createControlHeightReductionLegacyPass());
     }
+    /*addPass(createPrinterPass(outs(),
+                "===============================================================================\n"
+                "// After PGO\n"));*/
   }
   addPass(createLCSSAPass());
 
