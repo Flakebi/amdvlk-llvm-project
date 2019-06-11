@@ -53,6 +53,7 @@
 #include "llvm/Transforms/Utils.h"
 #include "llvm/Transforms/Utils/SimplifyLibCalls.h"
 #include "llvm/Transforms/Vectorize.h"
+#include <fstream>
 
 using namespace llvm;
 
@@ -1070,6 +1071,9 @@ bool GCNPassConfig::addPreISel() {
 
     // Add PGO passes after structurizing the CFG
     const char* profileGenFilename = getenv("AMDVLK_PROFILE_INSTR_GEN");
+    std::ofstream outfile;
+    outfile.open("/tmp/mydriveroutput.txt", std::ios_base::app);
+    outfile << "Compiling ";
 
     /*if (profileGenFilename || !profileUseFilenameString.empty())
     {
@@ -1092,6 +1096,7 @@ bool GCNPassConfig::addPreISel() {
 
     if (profileGenFilename)
     {
+      outfile << profileGenFilename;
       InstrProfOptions PGOOptions;
       PGOOptions.InstrProfileOutput = profileGenFilename;
       PGOOptions.Atomic = true;
@@ -1104,12 +1109,15 @@ bool GCNPassConfig::addPreISel() {
 
     if (!profileUseFilenameString.empty())
     {
+      outfile << " " << profileUseFilenameString;
       // Use file
       // The filename gets converted to a std::string so we can use the
       // stack allocated variable.
       addPass(createPGOInstrumentationUseLegacyPass(profileUseFilenameString));
+      addPass(createPGOInstrumentationAnalysisLegacyPass());
       addPass(createControlHeightReductionLegacyPass());
     }
+    outfile << "\n";
     /*addPass(createPrinterPass(outs(),
                 "===============================================================================\n"
                 "// After PGO\n"));*/
