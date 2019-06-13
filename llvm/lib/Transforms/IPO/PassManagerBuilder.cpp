@@ -199,6 +199,7 @@ PassManagerBuilder::PassManagerBuilder() {
     MergeFunctions = false;
     PrepareForLTO = false;
     EnablePGOInstrGen = false;
+    EnablePGOUniform = false;
     EnablePGOCSInstrGen = false;
     EnablePGOCSInstrUse = false;
     PGOInstrGen = "";
@@ -358,6 +359,10 @@ void PassManagerBuilder::addPGOInstrPasses(legacy::PassManagerBase &MPM,
   }
   if ((EnablePGOInstrGen && !IsCS) || (EnablePGOCSInstrGen && IsCS)) {
     MPM.add(createPGOInstrumentationGenLegacyPass(IsCS));
+
+    if (EnablePGOUniform)
+      MPM.add(createPGOUniformInstrumentationGenLegacyPass());
+
     // Add the profile lowering pass.
     if (!PGOInstrGen.empty())
       PGOOptions.InstrProfileOutput = PGOInstrGen;
@@ -366,8 +371,11 @@ void PassManagerBuilder::addPGOInstrPasses(legacy::PassManagerBase &MPM,
     MPM.add(createLoopRotatePass());
     MPM.add(createInstrProfilingLegacyPass(PGOOptions, IsCS));
   }
-  if (!PGOInstrUse.empty())
+  if (!PGOInstrUse.empty()) {
     MPM.add(createPGOInstrumentationUseLegacyPass(PGOInstrUse, IsCS));
+    if (EnablePGOUniform)
+      MPM.add(createPGOUniformInstrumentationUseLegacyPass(PGOInstrUse));
+  }
   // Indirect call promotion that promotes intra-module targets only.
   // For ThinLTO this is done earlier due to interactions with globalopt
   // for imported functions. We don't run this at -O0.

@@ -1087,6 +1087,12 @@ bool GCNPassConfig::addPreISel() {
         PGOOptions.DoCounterPromotion = true;
 
         addPass(createPGOInstrumentationGenLegacyPass());
+
+        if (pgoOpts.Uniform) {
+          // Needs to be run before InstrProfiling
+          addPass(createPGOUniformInstrumentationGenLegacyPass());
+        }
+
         addPass(createLoopRotatePass());
         addPass(createInstrProfilingLegacyPass(PGOOptions));
       }
@@ -1101,6 +1107,10 @@ bool GCNPassConfig::addPreISel() {
         if (pgoOpts.Analysis)
           addPass(createPGOInstrumentationAnalysisLegacyPass());
         addPass(createControlHeightReductionLegacyPass());
+
+        if (pgoOpts.Uniform) {
+          addPass(createPGOUniformInstrumentationUseLegacyPass(profileUseFilenameString));
+        }
       }
       outfile << "\n";
     }

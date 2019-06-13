@@ -178,6 +178,8 @@ public:
 
   /// Enable profile instrumentation pass.
   bool EnablePGOInstrGen;
+  /// Enable uniformity profiling passes. This needs PGO generation or usage.
+  bool EnablePGOUniform;
   /// Enable profile context sensitive instrumentation pass.
   bool EnablePGOCSInstrGen;
   /// Enable profile context sensitive profile use pass.
