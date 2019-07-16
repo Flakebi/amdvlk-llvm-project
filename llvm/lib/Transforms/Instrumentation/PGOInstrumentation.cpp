@@ -1801,10 +1801,7 @@ static std::vector<UniformLocation> UniformCollectAllFunctions(Module &M, functi
             }
 
             auto *cond = Call->getArgOperand(0);
-            // Check if the value is marked uniform
-            if (DA && !DA->isDivergent(cond)) {
-              continue;
-            }
+            // Ifs are always non-uniform, otherwise it would be a simple branch
 
             UniformLocation l(M, F, *cond, *Call);
             locs.push_back(l);
@@ -1861,12 +1858,44 @@ static bool analyze_pgo(Module &M, function_ref<BlockFrequencyInfo *(Function &)
   auto locs = UniformCollectAllFunctions(M, LookupNothing, &late);
   for (auto &l : locs) {
     auto DA = LookupDA(l.F);
-    if (!DA->isDivergent(&l.V)) {
+    if (!late && !DA->isDivergent(&l.V)) {
       outfile << "Static uniform\n";
     } else if (l.I.getMetadata("amdgpu.dynamic-uniform")) {
       outfile << "Dynamic uniform\n";
     } else {
       outfile << "Divergent\n";
+    }
+  }
+
+  if (late) {
+    // Count branches without if, those are static uniform
+    for (auto &F : M) {
+      if (F.isDeclaration())
+        continue;
+
+      // Analyze uniformity of every branch
+      for (auto &BB : F) {
+        bool contains_if = false;
+        // Try to find if intrinsics
+        for (auto &I : BB) {
+          CallInst *Call = dyn_cast<CallInst>(&I);
+          if (Call) {
+            IntrinsicInst *Intr = dyn_cast<IntrinsicInst>(Call);
+            if (Intr && Intr->getIntrinsicID() == Intrinsic::amdgcn_if) {
+              contains_if = true;
+              break;
+            }
+          }
+        }
+
+        if (!contains_if) {
+          BranchInst *Term = dyn_cast<BranchInst>(BB.getTerminator());
+          if (!Term || !Term->isConditional()) {
+            continue;
+          }
+          outfile << "Static uniform\n";
+        }
+      }
     }
   }
 
@@ -2114,7 +2143,7 @@ static bool annotateUniformAllFunctions(Module &M, function_ref<LegacyDivergence
   }
   // TODO: might need to change the warning once the clang option is finalized.
   if (!PGOReader->isIRLevelProfile()) {
-    printf("Not an IR level instrumentation profile\n");
+    //printf("Not an IR level instrumentation profile\n");
     //Ctx.diagnose(DiagnosticInfoPGOProfile(
         //ProfileFileName.data(), "Not an IR level instrumentation profile"));
     //return false;
@@ -2150,9 +2179,10 @@ static bool annotateUniformAllFunctions(Module &M, function_ref<LegacyDivergence
       i++;
     }
 
+    printf("Got uniform count %lu\n", CountFromProfile[i]);
     if (CountFromProfile[i] == 0) {
       // The resulting value is uniform (the computation input may not be
-      // uniform, but the output is so it does not matter which SIMD-lane
+      // uniform, but the output is, so it does not matter which SIMD-lane
       // executes it).
       l.I.setMetadata("amdgpu.dynamic-uniform", MDNode::get(l.I.getContext(), {}));
       changed = true;
@@ -2366,7 +2396,7 @@ static bool annotateAllFunctions(
 
   // TODO: might need to change the warning once the clang option is finalized.
   if (!PGOReader->isIRLevelProfile()) {
-    printf("Not an IR level instrumentation profile\n");
+    //printf("Not an IR level instrumentation profile\n");
     //Ctx.diagnose(DiagnosticInfoPGOProfile(
         //ProfileFileName.data(), "Not an IR level instrumentation profile"));
     //return false;
