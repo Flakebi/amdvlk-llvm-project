@@ -333,6 +333,7 @@ void initializePEIPass(PassRegistry&);
 void initializePGOIndirectCallPromotionLegacyPassPass(PassRegistry&);
 void initializePGOInstrumentationGenLegacyPassPass(PassRegistry&);
 void initializePGOInstrumentationAnalysisLegacyPassPass(PassRegistry&);
+void initializePGOUseTestLegacyPassPass(PassRegistry&);
 void initializePGOInstrumentationUseLegacyPassPass(PassRegistry&);
 void initializePGOInstrumentationGenCreateVarLegacyPassPass(PassRegistry&);
 void initializePGOUniformInstrumentationUseLegacyPassPass(PassRegistry&);

@@ -83,6 +83,7 @@ ModulePass *createGCOVProfilerPass(const GCOVOptions &Options =
 // instrumentation.
 ModulePass *createPGOInstrumentationGenLegacyPass(bool IsCS = false);
 ModulePass *createPGOInstrumentationAnalysisLegacyPass();
+ModulePass *createPGOUseTestLegacyPass();
 ModulePass *createPGOUniformInstrumentationGenLegacyPass();
 ModulePass *createPGOUniformInstrumentationUseLegacyPass(std::string filename);
 ModulePass *
