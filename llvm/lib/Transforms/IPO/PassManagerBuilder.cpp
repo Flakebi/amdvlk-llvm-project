@@ -37,6 +37,7 @@
 #include "llvm/Transforms/IPO/InferFunctionAttrs.h"
 #include "llvm/Transforms/InstCombine/InstCombine.h"
 #include "llvm/Transforms/Instrumentation.h"
+#include "llvm/Transforms/Instrumentation/PGOInstrumentation.h"
 #include "llvm/Transforms/Scalar.h"
 #include "llvm/Transforms/Scalar/GVN.h"
 #include "llvm/Transforms/Scalar/InstSimplifyPass.h"
@@ -357,10 +358,11 @@ void PassManagerBuilder::addPGOInstrPasses(legacy::PassManagerBase &MPM,
     MPM.add(createInstructionCombiningPass()); // Combine silly seq's
     addExtensionsToPM(EP_Peephole, MPM);
   }
+  AMDGPUPGOOptions pgoOpts;
   if ((EnablePGOInstrGen && !IsCS) || (EnablePGOCSInstrGen && IsCS)) {
     MPM.add(createPGOInstrumentationGenLegacyPass(IsCS));
 
-    if (EnablePGOUniform)
+    if (pgoOpts.Uniform)
       MPM.add(createPGOUniformInstrumentationGenLegacyPass());
 
     // Add the profile lowering pass.
@@ -373,8 +375,13 @@ void PassManagerBuilder::addPGOInstrPasses(legacy::PassManagerBase &MPM,
   }
   if (!PGOInstrUse.empty()) {
     MPM.add(createPGOInstrumentationUseLegacyPass(PGOInstrUse, IsCS));
-    if (EnablePGOUniform)
+    if (pgoOpts.Uniform)
       MPM.add(createPGOUniformInstrumentationUseLegacyPass(PGOInstrUse));
+
+    if (pgoOpts.Analysis)
+      MPM.add(createPGOInstrumentationAnalysisLegacyPass());
+
+    MPM.add(createPGOUseTestLegacyPass());
   }
   // Indirect call promotion that promotes intra-module targets only.
   // For ThinLTO this is done earlier due to interactions with globalopt

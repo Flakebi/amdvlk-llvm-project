@@ -1125,9 +1125,9 @@ bool GCNPassConfig::addPreISel() {
       addPass(createPGOUseTestLegacyPass());
     }
 
-    /*addPass(createPrinterPass(outs(),
+    addPass(createPrinterPass(outs(),
                 "===============================================================================\n"
-                "// After PGO\n"));*/
+                "// After PGO\n"));
   }
   addPass(createLCSSAPass());
 
