@@ -55,6 +55,7 @@
 #include "llvm/Transforms/Utils/SimplifyLibCalls.h"
 #include "llvm/Transforms/Vectorize.h"
 #include <fstream>
+#include <iostream>
 
 using namespace llvm;
 
@@ -1088,6 +1089,9 @@ bool GCNPassConfig::addPreISel() {
 
         addPass(createPGOInstrumentationGenLegacyPass());
 
+        /*addPass(createPrinterPass(outs(),
+                "===============================================================================\n"
+                "// Before uniform\n"));*/
         if (pgoOpts.Uniform) {
           // Needs to be run before InstrProfiling
           addPass(createPGOUniformInstrumentationGenLegacyPass());
@@ -1125,9 +1129,9 @@ bool GCNPassConfig::addPreISel() {
       addPass(createPGOUseTestLegacyPass());
     }
 
-    addPass(createPrinterPass(outs(),
+    /*addPass(createPrinterPass(outs(),
                 "===============================================================================\n"
-                "// After PGO\n"));
+                "// After PGO\n"));*/
   }
   addPass(createLCSSAPass());
 
