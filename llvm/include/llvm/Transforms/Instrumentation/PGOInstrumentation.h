@@ -113,7 +113,12 @@ private:
 
 class PGOInstrumentationAnalysis : public PassInfoMixin<PGOInstrumentationAnalysis> {
 public:
+  PGOInstrumentationAnalysis(std::string Filename = "");
+
   PreservedAnalyses run(Module &M, ModuleAnalysisManager &AM);
+
+private:
+  std::string Filename;
 };
 
 class PGOUseTest : public PassInfoMixin<PGOUseTest> {

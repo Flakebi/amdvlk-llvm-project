@@ -82,7 +82,7 @@ ModulePass *createGCOVProfilerPass(const GCOVOptions &Options =
 // PGO Instrumention. Parameter IsCS indicates if this is the context senstive
 // instrumentation.
 ModulePass *createPGOInstrumentationGenLegacyPass(bool IsCS = false);
-FunctionPass *createPGOInstrumentationAnalysisLegacyPass();
+FunctionPass *createPGOInstrumentationAnalysisLegacyPass(std::string filename);
 ModulePass *createPGOUseTestLegacyPass();
 FunctionPass *createPGOUniformInstrumentationGenLegacyPass();
 FunctionPass *createPGOUniformInstrumentationUseLegacyPass(std::string filename);

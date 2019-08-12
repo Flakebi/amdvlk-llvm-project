@@ -379,7 +379,7 @@ void PassManagerBuilder::addPGOInstrPasses(legacy::PassManagerBase &MPM,
       MPM.add(createPGOUniformInstrumentationUseLegacyPass(PGOInstrUse));
 
     if (pgoOpts.Analysis)
-      MPM.add(createPGOInstrumentationAnalysisLegacyPass());
+      MPM.add(createPGOInstrumentationAnalysisLegacyPass(PGOInstrUse));
 
     MPM.add(createPGOUseTestLegacyPass());
   }
