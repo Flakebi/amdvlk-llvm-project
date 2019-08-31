@@ -69,6 +69,7 @@ private:
   std::vector<LoadStorePair> PromotionCandidates;
 
   int64_t TotalCountersPromoted = 0;
+  bool Late;
   bool PerWave;
 
   /// Lower instrumentation intrinsics in the function. Returns true if there
