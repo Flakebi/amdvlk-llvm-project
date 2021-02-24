@@ -27,6 +27,7 @@
 namespace llvm {
 
 class TargetLibraryInfo;
+class AMDGPUSubtarget;
 using LoadStorePair = std::pair<Instruction *, Instruction *>;
 
 /// Instrumentation based profiling lowering pass. This pass lowers
@@ -40,13 +41,15 @@ public:
 
   PreservedAnalyses run(Module &M, ModuleAnalysisManager &AM);
   bool run(Module &M,
-           std::function<const TargetLibraryInfo &(Function &F)> GetTLI);
+           std::function<const TargetLibraryInfo &(Function &F)> GetTLI,
+           std::function<const AMDGPUSubtarget &(Function &F)> GetST);
 
 private:
   InstrProfOptions Options;
   Module *M;
   Triple TT;
   std::function<const TargetLibraryInfo &(Function &F)> GetTLI;
+  std::function<const AMDGPUSubtarget &(Function &F)> GetST;
   struct PerFunctionProfileData {
     uint32_t NumValueSites[IPVK_Last + 1];
     GlobalVariable *RegionCounters = nullptr;

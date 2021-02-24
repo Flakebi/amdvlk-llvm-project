@@ -369,7 +369,7 @@ void PassManagerBuilder::addPGOInstrPasses(legacy::PassManagerBase &MPM,
     if (!PGOInstrGen.empty())
       PGOOptions.InstrProfileOutput = PGOInstrGen;
     PGOOptions.DoCounterPromotion = true;
-    Options.UseBFIInPromotion = IsCS;
+    PGOOptions.UseBFIInPromotion = IsCS;
     MPM.add(createLoopRotatePass());
     MPM.add(createInstrProfilingLegacyPass(PGOOptions, IsCS));
   }

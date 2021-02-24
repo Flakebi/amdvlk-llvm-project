@@ -35,6 +35,8 @@
 #include "llvm/IR/Instruction.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/IntrinsicInst.h"
+#include "llvm/IR/IntrinsicsAMDGPU.h"
+#include "llvm/CodeGen/TargetPassConfig.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Type.h"
 #include "llvm/InitializePasses.h"
@@ -44,6 +46,7 @@
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Error.h"
 #include "llvm/Support/ErrorHandling.h"
+#include "llvm/Target/TargetMachine.h"
 #include "llvm/Transforms/Instrumentation/PGOInstrumentation.h"
 #include "llvm/Transforms/Utils/BasicBlockUtils.h"
 #include "llvm/Transforms/Utils/ModuleUtils.h"
@@ -53,6 +56,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <string>
+#include "../../Target/AMDGPU/AMDGPUSubtarget.h""
 
 using namespace llvm;
 
@@ -160,12 +164,18 @@ public:
     auto GetTLI = [this](Function &F) -> TargetLibraryInfo & {
       return this->getAnalysis<TargetLibraryInfoWrapperPass>().getTLI(F);
     };
-    return InstrProf.run(M, GetTLI);
+    auto GetST = [this](Function &F) -> const AMDGPUSubtarget & {
+      const auto &TPC = this->getAnalysis<TargetPassConfig>();
+      const auto &TM = TPC.getTM<TargetMachine>();
+      return AMDGPUSubtarget::get(TM, F);
+    };
+    return InstrProf.run(M, GetTLI, GetST);
   }
 
   void getAnalysisUsage(AnalysisUsage &AU) const override {
     AU.setPreservesCFG();
     AU.addRequired<TargetLibraryInfoWrapperPass>();
+    AU.addRequired<TargetPassConfig>();
   }
 };
 
@@ -414,7 +424,11 @@ PreservedAnalyses InstrProfiling::run(Module &M, ModuleAnalysisManager &AM) {
   auto GetTLI = [&FAM](Function &F) -> TargetLibraryInfo & {
     return FAM.getResult<TargetLibraryAnalysis>(F);
   };
-  if (!run(M, GetTLI))
+  auto GetST = [&FAM](Function &F) -> const AMDGPUSubtarget & {
+      const AMDGPUSubtarget *ST = nullptr;
+      return *ST;
+  };
+  if (!run(M, GetTLI, GetST))
     return PreservedAnalyses::all();
 
   return PreservedAnalyses::none();
@@ -425,6 +439,7 @@ INITIALIZE_PASS_BEGIN(
     InstrProfilingLegacyPass, "instrprof",
     "Frontend instrumentation-based coverage lowering.", false, false)
 INITIALIZE_PASS_DEPENDENCY(TargetLibraryInfoWrapperPass)
+INITIALIZE_PASS_DEPENDENCY(TargetPassConfig)
 INITIALIZE_PASS_END(
     InstrProfilingLegacyPass, "instrprof",
     "Frontend instrumentation-based coverage lowering.", false, false)
@@ -544,9 +559,10 @@ static bool containsProfilingIntrinsics(Module &M) {
 }
 
 bool InstrProfiling::run(
-    Module &M, std::function<const TargetLibraryInfo &(Function &F)> GetTLI) {
+    Module &M, std::function<const TargetLibraryInfo &(Function &F)> GetTLI, std::function<const AMDGPUSubtarget &(Function &F)> GetST) {
   this->M = &M;
   this->GetTLI = std::move(GetTLI);
+  this->GetST = std::move(GetST);
   NamesVar = nullptr;
   NamesSize = 0;
   ProfileDataMap.clear();
@@ -685,53 +701,43 @@ void InstrProfiling::lowerValueProfileInst(InstrProfValueProfileInst *Ind) {
 
 // Needs an IRBuilder where to insert the control flow structure.
 // The type is the return type of the active lanes, it has to be an integer.
-static Value *getSingleWaveExecution(IRBuilder<> &B, Type *Ty, bool AfterStructurize = false, DominatorTree *DT = nullptr) {
+static Value *getSingleWaveExecution(IRBuilder<> &B, Type *Ty, bool IsWave32, bool AfterStructurize = false, DominatorTree *DT = nullptr) {
   Function *F = B.GetInsertBlock()->getParent();
   Instruction &I = *B.GetInsertPoint();
-  bool IsPixelShader = F->getCallingConv() == CallingConv::AMDGPU_PS;
 
   const DataLayout *DL = &B.GetInsertBlock()->getParent()->getParent()->getDataLayout();
 
-  // If we're optimizing an atomic within a pixel shader, we need to wrap the
-  // entire atomic operation in a helper-lane check. We do not want any helper
-  // lanes that are around only for the purposes of derivatives to take part
-  // in any cross-lane communication, and we use a branch on whether the lane is
-  // live to do this.
-  if (IsPixelShader) {
-    Value *const Cond = B.CreateIntrinsic(Intrinsic::amdgcn_ps_live, {}, {});
-    Instruction *const NonHelperTerminator =
-        SplitBlockAndInsertIfThen(Cond, &I, false, nullptr, DT, nullptr);
-
-    I.moveBefore(NonHelperTerminator);
-    B.SetInsertPoint(&I);
-  }
-
-
   const unsigned TyBitWidth = DL->getTypeSizeInBits(Ty);
-  Type *const VecTy = VectorType::get(B.getInt32Ty(), 2);
+  Type *const VecTy = FixedVectorType::get(B.getInt32Ty(), 2);
 
   // We need to know how many lanes are active within the wavefront, and we do
   // this by doing a ballot of active lanes.
+  Type *const WaveTy = B.getIntNTy(IsWave32 ? 32 : 64);
   CallInst *const Ballot =
-      B.CreateIntrinsic(Intrinsic::amdgcn_icmp, {B.getInt32Ty()},
-                        {B.getInt32(1), B.getInt32(0), B.getInt32(33)});
+      B.CreateIntrinsic(Intrinsic::amdgcn_ballot, WaveTy, B.getTrue());
 
   // We need to know how many lanes are active within the wavefront that are
   // below us. If we counted each lane linearly starting from 0, a lane is
   // below us only if its associated index was less than ours. We do this by
   // using the mbcnt intrinsic.
-  Value *const BitCast = B.CreateBitCast(Ballot, VecTy);
-  Value *const ExtractLo = B.CreateExtractElement(BitCast, B.getInt32(0));
-  Value *const ExtractHi = B.CreateExtractElement(BitCast, B.getInt32(1));
-  CallInst *const PartialMbcnt = B.CreateIntrinsic(
-      Intrinsic::amdgcn_mbcnt_lo, {}, {ExtractLo, B.getInt32(0)});
-  CallInst *const Mbcnt = B.CreateIntrinsic(Intrinsic::amdgcn_mbcnt_hi, {},
-                                            {ExtractHi, PartialMbcnt});
-
-  Value *const MbcntCast = B.CreateIntCast(Mbcnt, Ty, false);
+  Value *Mbcnt;
+  if (IsWave32) {
+          Mbcnt = B.CreateIntrinsic(Intrinsic::amdgcn_mbcnt_lo, {},
+                              {Ballot, B.getInt32(0)});
+  } else {
+          Value *const BitCast = B.CreateBitCast(Ballot, VecTy);
+    Value *const ExtractLo = B.CreateExtractElement(BitCast, B.getInt32(0));
+    Value *const ExtractHi = B.CreateExtractElement(BitCast, B.getInt32(1));
+    Mbcnt = B.CreateIntrinsic(Intrinsic::amdgcn_mbcnt_lo, {},
+                              {ExtractLo, B.getInt32(0)});
+    Mbcnt =
+        B.CreateIntrinsic(Intrinsic::amdgcn_mbcnt_hi, {}, {ExtractHi, Mbcnt});
+  }
+  Mbcnt = B.CreateIntCast(Mbcnt, Ty, false);
 
   // Get the total number of active lanes we have by using popcount.
-  Instruction *const Ctpop = B.CreateUnaryIntrinsic(Intrinsic::ctpop, Ballot);
+  Value *const Ctpop = B.CreateIntCast(
+                B.CreateUnaryIntrinsic(Intrinsic::ctpop, Ballot), Ty, false);
   Value *const CtpopCast = B.CreateIntCast(Ctpop, Ty, false);
 
   // Calculate the new value we will be contributing to the atomic operation
@@ -741,25 +747,25 @@ static Value *getSingleWaveExecution(IRBuilder<> &B, Type *Ty, bool AfterStructu
   // We only want a single lane to enter our new control flow, and we do this
   // by checking if there are any active lanes below us. Only one lane will
   // have 0 active lanes below us, so that will be the only one to progress.
-  Value *Cond = B.CreateICmpEQ(MbcntCast, B.getIntN(TyBitWidth, 0));
+  Value *const Cond = B.CreateICmpEQ(Mbcnt, B.getIntN(TyBitWidth, 0));
 
   // We need to introduce some new control flow to force a single lane to be
   // active. We do this by splitting I's basic block at I, and introducing the
   // new block such that:
   // entry --> single_lane -\
   //       \------------------> exit
-  BranchInst *SingleLaneTerminator =
-      static_cast<BranchInst*>(SplitBlockAndInsertIfThen(Cond, &I, false, nullptr, DT, nullptr));
-  BasicBlock *Tail = SingleLaneTerminator->getSuccessor(0);
+  Instruction *const SingleLaneTerminator =
+      SplitBlockAndInsertIfThen(Cond, &I, false, nullptr, DT, nullptr);
 
+  BasicBlock *Tail = SingleLaneTerminator->getSuccessor(0);
   if (AfterStructurize) {
-    BranchInst *Term = cast<BranchInst>(Ctpop->getParent()->getTerminator());
-    auto *If = Intrinsic::getDeclaration(F->getParent(), Intrinsic::amdgcn_if);
+    BranchInst *Term = cast<BranchInst>(B.GetInsertBlock()->getTerminator());
+    auto *If = Intrinsic::getDeclaration(F->getParent(), Intrinsic::amdgcn_if, { WaveTy });
     Value *Ret = CallInst::Create(If, Term->getCondition(), "", Term);
     Term->setCondition(ExtractValueInst::Create(Ret, 0, "", Term));
     Value *ResetVal = ExtractValueInst::Create(Ret, 1, "", Term);
 
-    auto *EndCf = Intrinsic::getDeclaration(F->getParent(), Intrinsic::amdgcn_end_cf);
+    auto *EndCf = Intrinsic::getDeclaration(F->getParent(), Intrinsic::amdgcn_end_cf, { WaveTy });
     CallInst::Create(EndCf, ResetVal, "", &*Tail->getFirstInsertionPt());
   }
 
@@ -849,7 +855,8 @@ void InstrProfiling::lowerIncrement(InstrProfIncrementInst *Inc) {
           getAnalysisIfAvailable<DominatorTreeWrapperPass>();
       DominatorTree *DT = DTW ? &DTW->getDomTree() : nullptr;*/
       auto Step = Inc->getStep();
-      getSingleWaveExecution(Builder, Step->getType(), Late);
+      auto &ST = GetST(*Inc->getFunction());
+      getSingleWaveExecution(Builder, Step->getType(), ST.getWavefrontSize() == 32, Late);
       Builder.CreateAtomicRMW(AtomicRMWInst::Add, Addr, Step,
         AtomicOrdering::Monotonic);
 #endif
@@ -861,7 +868,8 @@ void InstrProfiling::lowerIncrement(InstrProfIncrementInst *Inc) {
           getAnalysisIfAvailable<DominatorTreeWrapperPass>();
       DominatorTree *DT = DTW ? &DTW->getDomTree() : nullptr;*/
       auto Step = Inc->getStep();
-      Value *LaneCount = getSingleWaveExecution(Builder, Step->getType(), Late);
+      auto &ST = GetST(*Inc->getFunction());
+      Value *LaneCount = getSingleWaveExecution(Builder, Step->getType(), ST.getWavefrontSize() == 32, Late);
       auto PerLaneVal = Builder.CreateMul(Step, LaneCount);
       Builder.CreateAtomicRMW(AtomicRMWInst::Add, Addr, PerLaneVal,
         AtomicOrdering::Monotonic);

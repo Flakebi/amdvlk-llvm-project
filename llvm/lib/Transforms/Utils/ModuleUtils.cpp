@@ -85,7 +85,7 @@ static void appendToUsedList(Module &M, StringRef Name, ArrayRef<GlobalValue *> 
     GV->eraseFromParent();
   }
 
-  Type *Int8PtrTy = llvm::Type::getInt8PtrTy(M.getContext());
+  Type *Int8PtrTy = llvm::Type::getInt8PtrTy(M.getContext(), Values[0]->getAddressSpace());
   for (auto *V : Values) {
     Constant *C = ConstantExpr::getBitCast(V, Int8PtrTy);
     if (InitAsSet.insert(C).second)

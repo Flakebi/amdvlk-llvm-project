@@ -75,9 +75,9 @@ INSTR_PROF_DATA(const uint64_t, llvm::Type::getInt64Ty(Ctx), NameRef, \
 INSTR_PROF_DATA(const uint64_t, llvm::Type::getInt64Ty(Ctx), FuncHash, \
                 ConstantInt::get(llvm::Type::getInt64Ty(Ctx), \
                 Inc->getHash()->getZExtValue()))
-INSTR_PROF_DATA(const IntPtrT, llvm::Type::getInt64PtrTy(Ctx), CounterPtr, \
+INSTR_PROF_DATA(const IntPtrT, llvm::Type::getInt64PtrTy(Ctx, CounterPtr->getAddressSpace()), CounterPtr, \
                 ConstantExpr::getBitCast(CounterPtr, \
-                llvm::Type::getInt64PtrTy(Ctx)))
+                llvm::Type::getInt64PtrTy(Ctx, CounterPtr->getAddressSpace())))
 /* This is used to map function pointers for the indirect call targets to
  * function name hashes during the conversion from raw to merged profile
  * data.

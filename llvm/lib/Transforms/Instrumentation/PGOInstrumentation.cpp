@@ -89,6 +89,7 @@
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/IntrinsicInst.h"
 #include "llvm/IR/Intrinsics.h"
+#include "llvm/IR/IntrinsicsAMDGPU.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/MDBuilder.h"
 #include "llvm/IR/Module.h"
@@ -1056,7 +1057,7 @@ static void instrumentOneFunc(
       InstrumentBBs.size() + FuncInfo.SIVisitor.getNumOfSelectInsts();
 
   uint32_t I = 0;
-  Type *I8PtrTy = Type::getInt8PtrTy(M->getContext());
+  Type *I8PtrTy = Type::getInt8PtrTy(M->getContext(), FuncInfo.FuncNameVar->getAddressSpace());
   for (auto *InstrBB : InstrumentBBs) {
     IRBuilder<> Builder(InstrBB, InstrBB->getFirstInsertionPt());
     assert(Builder.GetInsertPoint() != InstrBB->end() &&
@@ -1663,7 +1664,7 @@ void SelectInstVisitor::instrumentOneSelectInst(SelectInst &SI) {
   Module *M = F.getParent();
   IRBuilder<> Builder(&SI);
   Type *Int64Ty = Builder.getInt64Ty();
-  Type *I8PtrTy = Builder.getInt8PtrTy();
+  Type *I8PtrTy = Builder.getInt8PtrTy(FuncNameVar->getAddressSpace());
   auto *Step = Builder.CreateZExt(SI.getCondition(), Int64Ty);
   Builder.CreateCall(
       Intrinsic::getDeclaration(M, Intrinsic::instrprof_increment_step),
@@ -1843,28 +1844,32 @@ static std::vector<UniformLocation> UniformCollectFunction(Function &F, LegacyDi
         // TODO
         switch (IntrId) {
           case Intrinsic::amdgcn_buffer_load:
-          case Intrinsic::amdgcn_buffer_load_ubyte:
-          case Intrinsic::amdgcn_buffer_load_ushort:
           case Intrinsic::amdgcn_buffer_load_format:
           case Intrinsic::amdgcn_tbuffer_load: {
             // Ignore deprecated loads
+            break;
           }
           case Intrinsic::amdgcn_raw_buffer_load:
           case Intrinsic::amdgcn_raw_buffer_load_format: {
             //auto Offsets = splitBufferOffsets(Op.getOperand(3), DAG);
                                                            // Only offset
+            break;
           }
           case Intrinsic::amdgcn_struct_buffer_load:
           case Intrinsic::amdgcn_struct_buffer_load_format: {
                                                            // Only vindex + offset
             //auto Offsets = splitBufferOffsets(Op.getOperand(4), DAG);
+            break;
           }
           case Intrinsic::amdgcn_raw_tbuffer_load: {
+            break;
           }
           case Intrinsic::amdgcn_struct_tbuffer_load: {
+            break;
           }
 
           default: {
+            break;
             /*if (const AMDGPU::ImageDimIntrinsicInfo *ImageDimIntr =
                     AMDGPU::getImageDimIntrinsicInfo(IntrId)) {
             }*/
@@ -1940,9 +1945,6 @@ static bool analyze_pgo(Function &F, BlockFrequencyInfo *BFI, LegacyDivergenceAn
         break;
       case UniformLocationType::LoadValue:
         outfile << "LoadValue: ";
-        break;
-      default:
-        outfile << "Unknown: ";
         break;
     }
 
@@ -2203,7 +2205,7 @@ static void UniformInstrumentVariable(UniformLocation &l,
     //l.V.getType()->print(dbgs());
     //dbgs() << "\n";
 
-    Type *VecTy = VectorType::get(B.getInt32Ty(), TyIntWidth);
+    Type *VecTy = FixedVectorType::get(B.getInt32Ty(), TyIntWidth);
     //assert(l.V.getType()->canLosslesslyBitCastTo(VecTy) && "Uniform analysis is only implemented for multiples of 32 bit");
 
     // Cast into vector
